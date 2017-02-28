@@ -11,6 +11,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <algorithm>
+#include "string_view.hpp"
 
 #if PATTERNS_USE_HINTS
 #include <map>
@@ -23,14 +24,13 @@
 template <std::uint64_t FnvPrime, std::uint64_t OffsetBasis>
 struct basic_fnv_1
 {
-	std::uint64_t operator()(std::string const& text) const
+	std::uint64_t operator()(libcxx_strviewclone::string_view text) const
 	{
 		std::uint64_t hash = OffsetBasis;
-		for (std::string::const_iterator it = text.begin(), end = text.end();
-			 it != end; ++it)
+		for (auto it : text)
 		{
 			hash *= FnvPrime;
-			hash ^= *it;
+			hash ^= it;
 		}
 
 		return hash;
@@ -59,7 +59,7 @@ namespace hook
 static std::multimap<uint64_t, uintptr_t> g_hints;
 #endif
 
-static void TransformPattern(const std::string& pattern, std::string& data, std::string& mask)
+static void TransformPattern(libcxx_strviewclone::string_view pattern, std::string& data, std::string& mask)
 {
 	uint8_t tempDigit = 0;
 	bool tempFlag = false;
@@ -137,13 +137,12 @@ public:
 void pattern::Initialize(const char* pattern, size_t length)
 {
 	// get the hash for the base pattern
-	std::string baseString(pattern, length);
 #if PATTERNS_USE_HINTS
-	m_hash = fnv_1()(baseString);
+	m_hash = fnv_1()(libcxx_strviewclone::string_view(pattern, length));
 #endif
 
 	// transform the base pattern from IDA format to canonical format
-	TransformPattern(baseString, m_bytes, m_mask);
+	TransformPattern(libcxx_strviewclone::string_view(pattern, length), m_bytes, m_mask);
 
 	m_size = m_mask.size();
 
