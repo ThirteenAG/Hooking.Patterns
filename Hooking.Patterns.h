@@ -135,6 +135,13 @@ namespace hook
 			return *this;
 		}
 
+		inline pattern& clear()
+		{
+			m_matches.clear();
+			m_matched = false;
+			return *this;
+		}
+
 		inline size_t size()
 		{
 			EnsureMatches(UINT32_MAX);
