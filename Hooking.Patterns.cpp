@@ -119,10 +119,25 @@ public:
 	explicit executable_meta(void* module)
 		: m_begin((uintptr_t)module)
 	{
+		static auto getSection = [](const PIMAGE_NT_HEADERS nt_headers, unsigned section) -> PIMAGE_SECTION_HEADER
+		{
+			return reinterpret_cast<PIMAGE_SECTION_HEADER>(
+				(UCHAR*)nt_headers->OptionalHeader.DataDirectory +
+				nt_headers->OptionalHeader.NumberOfRvaAndSizes * sizeof(IMAGE_DATA_DIRECTORY) +
+				section * sizeof(IMAGE_SECTION_HEADER));
+		};
+
 		PIMAGE_DOS_HEADER dosHeader = getRVA<IMAGE_DOS_HEADER>(0);
 		PIMAGE_NT_HEADERS ntHeader = getRVA<IMAGE_NT_HEADERS>(dosHeader->e_lfanew);
 
-		m_end = m_begin + ntHeader->OptionalHeader.SizeOfCode;
+		m_end = m_begin;
+
+		for (int i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
+		{
+			auto sec = getSection(ntHeader, i);
+			if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
+				m_end += sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
+		}
 	}
 
 	executable_meta(uintptr_t begin, uintptr_t end)
