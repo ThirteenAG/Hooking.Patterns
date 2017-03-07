@@ -130,13 +130,15 @@ public:
 		PIMAGE_DOS_HEADER dosHeader = getRVA<IMAGE_DOS_HEADER>(0);
 		PIMAGE_NT_HEADERS ntHeader = getRVA<IMAGE_NT_HEADERS>(dosHeader->e_lfanew);
 
-		m_end = m_begin;
-
 		for (int i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
 		{
 			auto sec = getSection(ntHeader, i);
-			if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
-				m_end += sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
+
+            if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
+            {
+                auto secSize = sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
+                m_end = m_begin + sec->VirtualAddress + secSize;
+            }
 		}
 	}
 
