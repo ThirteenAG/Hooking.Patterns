@@ -122,16 +122,10 @@ namespace hook
 			Initialize(pattern, Len);
 		}
 
-		pattern(std::string pattern)
+		pattern(std::string& pattern)
 			: pattern(getRVA<void>(0))
 		{
 			Initialize(pattern.c_str(), pattern.length());
-		}
-
-		pattern(char* pattern)
-			: pattern(getRVA<void>(0))
-		{
-			Initialize(pattern, strlen(pattern));
 		}
 
 		inline pattern& count(uint32_t expected)
