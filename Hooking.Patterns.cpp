@@ -117,7 +117,7 @@ public:
 	}
 
 	explicit executable_meta(void* module)
-		: m_begin((uintptr_t)module)
+		: m_begin((uintptr_t)module), m_end(0)
 	{
 		static auto getSection = [](const PIMAGE_NT_HEADERS nt_headers, unsigned section) -> PIMAGE_SECTION_HEADER
 		{
@@ -133,12 +133,12 @@ public:
 		for (int i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
 		{
 			auto sec = getSection(ntHeader, i);
+			auto secSize = sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
+			if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
+				m_end = m_begin + sec->VirtualAddress + secSize;
 
-            if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
-            {
-                auto secSize = sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
-                m_end = m_begin + sec->VirtualAddress + secSize;
-            }
+			if ((i == ntHeader->FileHeader.NumberOfSections - 1) && m_end == 0)
+				m_end = m_begin + sec->PointerToRawData + secSize;
 		}
 	}
 
