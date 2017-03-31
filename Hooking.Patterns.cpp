@@ -224,26 +224,30 @@ void pattern::EnsureMatches(uint32_t maxCount)
 		}
 	}
 
-	for (uintptr_t i = executable.begin(), end = executable.end() - m_size; i <= end;)
+	__try
 	{
-		uint8_t* ptr = reinterpret_cast<uint8_t*>(i);
-		ptrdiff_t j = m_size - 1;
-
-		while((j >= 0) && (mask[j] == '?' || pattern[j] == ptr[j])) j--;
-
-		if(j < 0)
+		for (uintptr_t i = executable.begin(), end = executable.end() - m_size; i <= end;)
 		{
-			m_matches.emplace_back(ptr);
+			uint8_t* ptr = reinterpret_cast<uint8_t*>(i);
+			ptrdiff_t j = m_size - 1;
 
-			if (matchSuccess(i))
+			while ((j >= 0) && (mask[j] == '?' || pattern[j] == ptr[j])) j--;
+
+			if (j < 0)
 			{
-				break;
-			}
-			i++;
-		}
-		else i += std::max(1, j - Last[ ptr[j] ]);
-	}
+				m_matches.emplace_back(ptr);
 
+				if (matchSuccess(i))
+				{
+					break;
+				}
+				i++;
+			}
+			else i += std::max(1, j - Last[ptr[j]]);
+		}
+	}
+	__except ((GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) 
+	{ }
 	m_matched = true;
 }
 
