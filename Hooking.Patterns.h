@@ -141,8 +141,10 @@ namespace hook
 			return *this;
 		}
 
-		inline pattern& clear()
+		inline pattern& clear(void* module = nullptr)
 		{
+			if (module)
+				m_module = module;
 			m_matches.clear();
 			m_matched = false;
 			return *this;
