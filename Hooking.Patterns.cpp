@@ -190,9 +190,10 @@ void pattern::Initialize(const char* pattern, size_t length)
 void pattern::EnsureMatches(uint32_t maxCount)
 {
 	if (m_matched)
-	{
 		return;
-	}
+
+	if (!m_rangeStart && !m_rangeEnd && !m_module)
+		return;
 
 	// scan the executable for code
 	executable_meta executable = m_rangeStart != 0 && m_rangeEnd != 0 ? executable_meta(m_rangeStart, m_rangeEnd) : executable_meta(m_module);
