@@ -13,7 +13,7 @@ int main()
     if (pattern.size() > 0)
     {
         auto text = pattern.get(0).get<char>(0);
-        MessageBoxA(0, text, text,0);
+        MessageBoxA(0, text, text, 0);
     }
     return 0;
 }
