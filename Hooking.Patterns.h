@@ -10,7 +10,7 @@
 #include <cassert>
 #include <vector>
 
-#define PATTERNS_USE_HINTS 1
+#define PATTERNS_USE_HINTS 0
 
 namespace hook
 {
