@@ -9,7 +9,7 @@ Sample:
 
 int main()
 {
-    auto pattern = hook::pattern("54 68 69 73 20 70 72 6F 67 72");
+    auto pattern = hook::pattern("5? ?8 ?? ? 20    70 72 6F 67 72");
     if (pattern.size() > 0)
     {
         auto text = pattern.get(0).get<char>(0);
