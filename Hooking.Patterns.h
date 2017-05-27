@@ -10,6 +10,8 @@
 #include <cassert>
 #include <vector>
 
+#define PATTERNS_USE_HINTS 0
+
 namespace hook
 {
 	extern ptrdiff_t baseAddressDifference;
@@ -41,6 +43,164 @@ namespace hook
 #endif
 	}
 
+	class pattern_byte
+	{
+	public:
+		enum class match_method :std::uint8_t
+		{
+			wild,
+			high4,
+			low4,
+			exact
+		};
+
+		pattern_byte()
+		{
+			this->be_wild();
+		}
+
+		pattern_byte(std::uint8_t value, match_method method = match_method::exact)
+		{
+			this->set_value(value, method);
+		}
+
+		pattern_byte &set_value(std::uint8_t value, match_method method = match_method::exact)
+		{
+			this->_method = method;
+			this->_value = 0;
+
+			switch (this->_method)
+			{
+			case match_method::high4:
+				this->_high_value = value;
+				break;
+
+			case match_method::low4:
+				this->_low_value = value;
+				break;
+
+			case match_method::exact:
+				this->_value = value;
+				break;
+
+			default:
+				break;
+			}
+
+			return *this;
+		}
+
+		void be_wild()
+		{
+			this->_method = match_method::wild;
+			this->_value = 0;
+		}
+
+		bool is_wild() const
+		{
+			return this->_method == match_method::wild;
+		}
+
+		bool match(std::uint8_t byte) const
+		{
+			switch (this->_method)
+			{
+			case match_method::exact:
+				return this->_value == byte;
+
+			case match_method::high4:
+				return this->_high_value == (byte >> 4u);
+
+			case match_method::low4:
+				return this->_low_value == (byte & 0x0Fu);
+
+			case match_method::wild:
+				return true;
+
+			default:
+				return false;
+			}
+		}
+
+		bool equivalent(const pattern_byte &rhs) const
+		{
+			if (this->is_wild() || rhs.is_wild())
+			{
+				return true;
+			}
+
+			if (this->_method != rhs._method)
+			{
+				if (!(this->_method == match_method::exact || rhs._method == match_method::exact))
+				{
+					return false;
+				}
+			}
+
+			switch (this->_method)
+			{
+			case match_method::low4:
+				return  (this->_low_value == rhs._low_value);
+
+			case match_method::high4:
+				return  (this->_high_value == rhs._high_value);
+
+			case match_method::exact:
+				switch (rhs._method)
+				{
+				case match_method::low4:
+					return  (this->_low_value == rhs._low_value);
+
+				case match_method::high4:
+					return  (this->_high_value == rhs._high_value);
+
+				case match_method::exact:
+					return (this->_value == rhs._value);
+
+				default:
+					return false;
+				}
+
+			default:
+				return false;
+			}
+		}
+
+		bool operator==(const pattern_byte &rhs) const
+		{
+			return this->equivalent(rhs);
+		}
+
+		bool operator==(std::uint8_t value) const
+		{
+			return this->match(value);
+		}
+
+		bool operator!=(const pattern_byte &rhs) const
+		{
+			return !this->equivalent(rhs);
+		}
+
+		bool operator!=(std::uint8_t value) const
+		{
+			return !this->match(value);
+		}
+
+	private:
+		union
+		{
+			struct
+			{
+				std::uint8_t _low_value : 4;
+				std::uint8_t _high_value : 4;
+			};
+
+			std::uint8_t _value;
+		};
+
+		match_method _method;
+	};
+
 	class pattern_match
 	{
 	private:
@@ -63,14 +223,11 @@ namespace hook
 	class pattern
 	{
 	private:
-		std::string m_bytes;
-		std::string m_mask;
+		std::vector<pattern_byte> m_bytes;
 
 #if PATTERNS_USE_HINTS
 		uint64_t m_hash;
 #endif
-
-		size_t m_size;
 
 		std::vector<pattern_match> m_matches;
 
@@ -97,7 +254,7 @@ namespace hook
 		{
 		}
 
-		void Initialize(const char* pattern, size_t length);
+		void Initialize(const char* pattern);
 
 	private:
 		bool ConsiderMatch(uintptr_t offset);
@@ -119,13 +276,13 @@ namespace hook
 		pattern(const char (&pattern)[Len])
 			: pattern(getRVA<void>(0))
 		{
-			Initialize(pattern, Len);
+			Initialize(pattern);
 		}
 
 		pattern(std::string& pattern)
 			: pattern(getRVA<void>(0))
 		{
-			Initialize(pattern.c_str(), pattern.length());
+			Initialize(pattern.c_str());
 		}
 
 		inline pattern& count(uint32_t expected)
@@ -178,6 +335,15 @@ namespace hook
 			return get_one().get<T>(offset);
 		}
 
+		template <typename Fn>
+		void for_each_result(Fn Pr) const
+		{
+			for (auto &result : this->m_matches)
+			{
+				Pr(result);
+			}
+		}
+
 	public:
 #if PATTERNS_USE_HINTS
 		// define a hint
@@ -199,7 +365,7 @@ namespace hook
 		module_pattern(void* module, std::string& pattern)
 			: pattern(module)
 		{
-			Initialize(pattern.c_str(), pattern.length());
+			Initialize(pattern.c_str());
 		}
 	};
 
@@ -217,7 +383,7 @@ namespace hook
 		range_pattern(uintptr_t begin, uintptr_t end, std::string& pattern)
 			: pattern(begin, end)
 		{
-			Initialize(pattern.c_str(), pattern.length());
+			Initialize(pattern.c_str());
 		}
 	};
 

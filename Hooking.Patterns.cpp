@@ -12,35 +12,34 @@
 #include <windows.h>
 #include <algorithm>
 #include <string_view>
+#include <array>
 
 #if PATTERNS_USE_HINTS
 #include <map>
 #endif
 
-
 #if PATTERNS_USE_HINTS
-
-// from boost someplace
-template <std::uint64_t FnvPrime, std::uint64_t OffsetBasis>
-struct basic_fnv_1
+// from VS2017 Standard Library someplace
+static struct
 {
-	std::uint64_t operator()(std::string_view text) const
+	std::uint64_t operator()(const std::vector<hook::pattern_byte> &pat) const
 	{
-		std::uint64_t hash = OffsetBasis;
-		for (auto it : text)
-		{
-			hash *= FnvPrime;
-			hash ^= it;
+		static const std::uint64_t _FNV_offset_basis = 14695981039346656037ULL;
+		static const std::uint64_t _FNV_prime = 1099511628211ULL;
+
+		const std::uint8_t *_First = reinterpret_cast<const std::uint8_t *>(pat.data());
+		std::uint64_t _Count = static_cast<std::uint64_t>(pat.size()) * sizeof(hook::pattern_byte);
+
+		std::uint64_t _Val = _FNV_offset_basis;
+
+		for (std::uint64_t _Next = 0; _Next < _Count; ++_Next)
+		{	// fold in another byte
+			_Val ^= (std::uint64_t)_First[_Next];
+			_Val *= _FNV_prime;
 		}
-
-		return hash;
+		return (_Val);
 	}
-};
-
-const std::uint64_t fnv_prime = 1099511628211u;
-const std::uint64_t fnv_offset_basis = 14695981039346656037u;
-
-typedef basic_fnv_1<fnv_prime, fnv_offset_basis> fnv_1;
+} g_pattern_hasher;
 
 #endif
 
@@ -59,45 +58,72 @@ namespace hook
 static std::multimap<uint64_t, uintptr_t> g_hints;
 #endif
 
-static void TransformPattern(std::string_view pattern, std::string& data, std::string& mask)
+static void TransformPattern(const char *literal, std::vector<pattern_byte> &data)
 {
-	uint8_t tempDigit = 0;
-	bool tempFlag = false;
-
-	auto tol = [] (char ch) -> uint8_t
+	auto tol = [](char ch) -> uint8_t
 	{
 		if (ch >= 'A' && ch <= 'F') return uint8_t(ch - 'A' + 10);
 		if (ch >= 'a' && ch <= 'f') return uint8_t(ch - 'a' + 10);
 		return uint8_t(ch - '0');
 	};
 
-	for (auto ch : pattern)
+	auto is_digit = [](char ch) -> bool
 	{
-		if (ch == ' ')
-		{
-			continue;
-		}
-		else if (ch == '?')
-		{
-			data.push_back(0);
-			mask.push_back('?');
-		}
-		else if ((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f'))
-		{
-			uint8_t thisDigit = tol(ch);
+		return (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f') || (ch >= '0' && ch <= '9');
+	};
 
-			if (!tempFlag)
+	std::array<char, 2> temp_string{ 0, 0 };
+
+	data.clear();
+
+	std::string_view view(literal, std::string_view(literal).size() + 1);
+
+	for (auto ch : view)
+	{
+		if (ch == ' ' || ch == 0)
+		{
+			if (!temp_string[0] && !temp_string[1])
 			{
-				tempDigit = thisDigit << 4;
-				tempFlag = true;
+				continue;
+			}
+			else if (temp_string[0] == '?' && (temp_string[1] == '?' || temp_string[1] == 0))
+			{
+				data.emplace_back();
+			}
+			else if (temp_string[0] == '?' && is_digit(temp_string[1]))
+			{
+				data.emplace_back(tol(temp_string[1]), pattern_byte::match_method::low4);
+			}
+			else if (temp_string[1] == '?' && is_digit(temp_string[0]))
+			{
+				data.emplace_back(tol(temp_string[0]), pattern_byte::match_method::high4);
+			}
+			else if (is_digit(temp_string[0]) && is_digit(temp_string[1]))
+			{
+				data.emplace_back((tol(temp_string[0]) << 4) | tol(temp_string[1]));
 			}
 			else
 			{
-				tempDigit |= thisDigit;
-				tempFlag = false;
+				data.clear();
+				return;
+			}
 
-				data.push_back(tempDigit);
-				mask.push_back('x');
+			temp_string.fill(0);
+		}
+		else
+		{
+			if (temp_string[0] == 0)
+			{
+				temp_string[0] = ch;
+			}
+			else if (temp_string[1] == 0)
+			{
+				temp_string[1] = ch;
+			}
+			else
+			{
+				data.clear();
+				return;
 			}
 		}
 	}
@@ -151,17 +177,14 @@ public:
 	inline uintptr_t end() const   { return m_end; }
 };
 
-void pattern::Initialize(const char* pattern, size_t length)
+void pattern::Initialize(const char* pattern)
 {
-	// get the hash for the base pattern
+	TransformPattern(pattern, m_bytes);
+
+	// get the hash for the transformed pattern
 #if PATTERNS_USE_HINTS
-	m_hash = fnv_1()(std::string_view(pattern, length));
+	m_hash = g_pattern_hasher(this->m_bytes);
 #endif
-
-	// transform the base pattern from IDA format to canonical format
-	TransformPattern(std::string_view(pattern, length), m_bytes, m_mask);
-
-	m_size = m_mask.size();
 
 #if PATTERNS_USE_HINTS
 	// if there's hints, try those first
@@ -209,42 +232,47 @@ void pattern::EnsureMatches(uint32_t maxCount)
 		return (m_matches.size() == maxCount);
 	};
 
-	const uint8_t* pattern = reinterpret_cast<const uint8_t*>(m_bytes.c_str());
-	const char* mask = m_mask.c_str();
-	size_t lastWild = m_mask.find_last_of('?');
+	std::array<std::ptrdiff_t, 256> bmbc;
+	std::ptrdiff_t index;
 
-	ptrdiff_t Last[256];
-
-	std::fill(std::begin(Last), std::end(Last), lastWild == std::string::npos ? -1 : static_cast<ptrdiff_t>(lastWild) );
-
-	for ( ptrdiff_t i = 0; i < static_cast<ptrdiff_t>(m_size); ++i )
+	//Bad characters table
+	for (std::uint32_t bc = 0; bc < 256; ++bc)
 	{
-		if ( Last[ pattern[i] ] < i )
+		for (index = this->m_bytes.size() - 1; index >= 0; --index)
 		{
-			Last[ pattern[i] ] = i;
+			if (this->m_bytes[index].match(bc))
+			{
+				break;
+			}
 		}
+
+		bmbc[bc] = index;
 	}
+
+	std::uint8_t *range_begin = reinterpret_cast<std::uint8_t *>(executable.begin());
+	std::uint8_t *range_end = reinterpret_cast<std::uint8_t *>(executable.end() - this->m_bytes.size());
 
 	__try
 	{
-		for (uintptr_t i = executable.begin(), end = executable.end() - m_size; i <= end;)
+		while (range_begin <= range_end)
 		{
-			uint8_t* ptr = reinterpret_cast<uint8_t*>(i);
-			ptrdiff_t j = m_size - 1;
-
-			while ((j >= 0) && (mask[j] == '?' || pattern[j] == ptr[j])) j--;
-
-			if (j < 0)
+			for (index = this->m_bytes.size() - 1; index >= 0; --index)
 			{
-				m_matches.emplace_back(ptr);
-
-				if (matchSuccess(i))
+				if (!this->m_bytes[index].match(range_begin[index]))
 				{
 					break;
 				}
-				i++;
 			}
-			else i += std::max(1, j - Last[ptr[j]]);
+
+			if (index == -1)
+			{
+				this->m_matches.emplace_back(range_begin);
+				range_begin += this->m_bytes.size();
+			}
+			else
+			{
+				range_begin += std::max(index - bmbc[range_begin[index]], 1);
+			}
 		}
 	}
 	__except ((GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) 
@@ -254,27 +282,15 @@ void pattern::EnsureMatches(uint32_t maxCount)
 
 bool pattern::ConsiderMatch(uintptr_t offset)
 {
-	const char* pattern = m_bytes.c_str();
-	const char* mask = m_mask.c_str();
+	auto ptr = reinterpret_cast<std::uint8_t *>(offset);
 
-	char* ptr = reinterpret_cast<char*>(offset);
-
-	for (size_t i = 0; i < m_size; i++)
+	if (std::equal(m_bytes.begin(), m_bytes.end(), ptr))
 	{
-		if (mask[i] == '?')
-		{
-			continue;
-		}
-
-		if (pattern[i] != ptr[i])
-		{
-			return false;
-		}
+		m_matches.emplace_back(ptr);
+		return true;
 	}
 
-	m_matches.emplace_back(ptr);
-
-	return true;
+	return false;
 }
 
 #if PATTERNS_USE_HINTS
