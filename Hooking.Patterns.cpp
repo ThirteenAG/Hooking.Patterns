@@ -109,7 +109,7 @@ static void TransformPattern(const char *pattern, std::vector<uint8_t>& data, st
             }
             else if (temp_string[1] == '?' && is_digit(temp_string[0]))
             {
-                data.push_back(tol(temp_string[0]));
+                data.push_back(tol(temp_string[0]) << 4);
                 mask.push_back(0xF0u);
             }
             else if (is_digit(temp_string[0]) && is_digit(temp_string[1]))
