@@ -8,7 +8,7 @@
 #include "Hooking.Patterns.h"
 
 #define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+
 #include <windows.h>
 #include <algorithm>
 
@@ -302,7 +302,7 @@ void pattern::EnsureMatches(uint32_t maxCount)
             }
             else
             {
-                i += std::max(index - BadCharacter[ptr[index]], 1);
+                i += max(index - BadCharacter[ptr[index]], 1);
             }
         }
     }
