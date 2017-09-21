@@ -93,26 +93,26 @@ static void TransformPattern(const char *pattern, std::vector<uint8_t>& data, st
 
         if (ch == ' ' || ch == 0)
         {
-            if (!temp_string[0] && !temp_string[1])
+            if (!temp_string[0] && !temp_string[1]) //Continous delimiter
             {
-                continue;
+                
             }
-            else if (temp_string[0] == '?' && (temp_string[1] == '?' || temp_string[1] == 0))
+            else if (temp_string[0] == '?' && (temp_string[1] == '?' || temp_string[1] == 0)) //??
             {
                 data.push_back(0);
                 mask.push_back(0u);
             }
-            else if (temp_string[0] == '?' && is_digit(temp_string[1]))
+            else if (temp_string[0] == '?' && is_digit(temp_string[1])) //?x
             {
                 data.push_back(tol(temp_string[1]));
                 mask.push_back(0x0Fu);
             }
-            else if (temp_string[1] == '?' && is_digit(temp_string[0]))
+            else if (temp_string[1] == '?' && is_digit(temp_string[0])) //x?
             {
                 data.push_back(tol(temp_string[0]) << 4);
                 mask.push_back(0xF0u);
             }
-            else if (is_digit(temp_string[0]) && is_digit(temp_string[1]))
+            else if (is_digit(temp_string[0]) && is_digit(temp_string[1])) //xx
             {
                 data.push_back((tol(temp_string[0]) << 4) | tol(temp_string[1]));
                 mask.push_back(0xFFu);
