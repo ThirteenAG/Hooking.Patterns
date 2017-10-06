@@ -39,7 +39,7 @@ namespace hook
 #ifdef _M_IX86
         return (T*)(baseAddressDifference + 0x400000 + rva);
 #elif defined(_M_AMD64)
-        return (T*)(0x140000000 + rva);
+        return (T*)(baseAddressDifference + 0x140000000 + rva);
 #endif
     }
 
