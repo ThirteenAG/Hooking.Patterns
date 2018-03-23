@@ -103,6 +103,10 @@ namespace hook
         }
 
     public:
+        pattern()
+        {
+        }
+
         pattern(std::string_view pattern)
             : pattern(getRVA(0))
         {
@@ -134,8 +138,14 @@ namespace hook
             return std::forward<pattern>(*this);
         }
 
-        inline pattern&& clear()
+        inline pattern&& clear(void* module = nullptr)
         {
+            if (module)
+            {
+                this->m_rangeStart = reinterpret_cast<uintptr_t>(module);
+                this->m_rangeEnd = 0;
+            }
+
             m_matches.clear();
             m_matched = false;
             return std::forward<pattern>(*this);
@@ -185,6 +195,27 @@ namespace hook
         // define a hint
         static void hint(uint64_t hash, uintptr_t address);
 #endif
+
+        friend class range_pattern;
+        friend class module_pattern;
+    };
+
+    class range_pattern : public pattern
+    {
+    public:
+        inline range_pattern(uintptr_t begin, uintptr_t end, std::string_view bytes) : pattern(begin, end)
+        {
+            Initialize(std::move(bytes));
+        }
+    };
+
+    class module_pattern : public pattern
+    {
+    public:
+        inline module_pattern(void* module, std::string_view bytes) : pattern(reinterpret_cast<uintptr_t>(module))
+        {
+            Initialize(std::move(bytes));
+        }
     };
 
     inline pattern make_module_pattern(void* module, std::string_view bytes)

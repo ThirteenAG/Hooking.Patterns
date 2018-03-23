@@ -120,12 +120,29 @@ namespace hook
         }
 
         explicit executable_meta(uintptr_t module)
-            : m_begin(module)
+            : m_begin(module), m_end(0)
         {
+            static auto getSection = [](const PIMAGE_NT_HEADERS nt_headers, unsigned section) -> PIMAGE_SECTION_HEADER
+            {
+                return reinterpret_cast<PIMAGE_SECTION_HEADER>(
+                    (UCHAR*)nt_headers->OptionalHeader.DataDirectory +
+                    nt_headers->OptionalHeader.NumberOfRvaAndSizes * sizeof(IMAGE_DATA_DIRECTORY) +
+                    section * sizeof(IMAGE_SECTION_HEADER));
+            };
+
             PIMAGE_DOS_HEADER dosHeader = getRVA<IMAGE_DOS_HEADER>(0);
             PIMAGE_NT_HEADERS ntHeader = getRVA<IMAGE_NT_HEADERS>(dosHeader->e_lfanew);
 
-            m_end = m_begin + ntHeader->OptionalHeader.SizeOfImage;
+            for (int i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
+            {
+                auto sec = getSection(ntHeader, i);
+                auto secSize = sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
+                if (sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)
+                    m_end = m_begin + sec->VirtualAddress + secSize;
+
+                if ((i == ntHeader->FileHeader.NumberOfSections - 1) && m_end == 0)
+                    m_end = m_begin + sec->PointerToRawData + secSize;
+            }
         }
 
         executable_meta(uintptr_t begin, uintptr_t end)
@@ -175,10 +192,8 @@ namespace hook
 
     void pattern::EnsureMatches(uint32_t maxCount)
     {
-        if (m_matched)
-        {
+        if (m_matched || (!m_rangeStart && !m_rangeEnd))
             return;
-        }
 
         // scan the executable for code
         executable_meta executable = m_rangeStart != 0 && m_rangeEnd != 0 ? executable_meta(m_rangeStart, m_rangeEnd) : executable_meta(m_rangeStart);
@@ -211,25 +226,30 @@ namespace hook
             }
         }
 
-        for (uintptr_t i = executable.begin(), end = executable.end() - maskSize; i <= end;)
+        __try
         {
-            uint8_t* ptr = reinterpret_cast<uint8_t*>(i);
-            ptrdiff_t j = maskSize - 1;
-
-            while ((j >= 0) && pattern[j] == (ptr[j] & mask[j])) j--;
-
-            if (j < 0)
+            for (uintptr_t i = executable.begin(), end = executable.end() - maskSize; i <= end;)
             {
-                m_matches.emplace_back(ptr);
+                uint8_t* ptr = reinterpret_cast<uint8_t*>(i);
+                ptrdiff_t j = maskSize - 1;
 
-                if (matchSuccess(i))
+                while ((j >= 0) && pattern[j] == (ptr[j] & mask[j])) j--;
+
+                if (j < 0)
                 {
-                    break;
+                    m_matches.emplace_back(ptr);
+
+                    if (matchSuccess(i))
+                    {
+                        break;
+                    }
+                    i++;
                 }
-                i++;
+                else i += std::max(ptrdiff_t(1), j - Last[ptr[j]]);
             }
-            else i += std::max(ptrdiff_t(1), j - Last[ptr[j]]);
         }
+        __except ((GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+        { }
 
         m_matched = true;
     }
