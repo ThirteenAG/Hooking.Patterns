@@ -9,7 +9,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#include <windows.h>
+#include <Windows.h>
 #include <algorithm>
 
 #if PATTERNS_USE_HINTS
@@ -120,7 +120,7 @@ public:
 	explicit executable_meta(uintptr_t module)
 		: m_begin(module), m_end(0)
 	{
-		static auto getSection = [](const PIMAGE_NT_HEADERS nt_headers, unsigned section) -> PIMAGE_SECTION_HEADER
+		static auto getSection = [](const PIMAGE_NT_HEADERS nt_headers, WORD section) -> PIMAGE_SECTION_HEADER
 		{
 			return reinterpret_cast<PIMAGE_SECTION_HEADER>(
 				(UCHAR*)nt_headers->OptionalHeader.DataDirectory +
@@ -131,7 +131,7 @@ public:
 		PIMAGE_DOS_HEADER dosHeader = getRVA<IMAGE_DOS_HEADER>(0);
 		PIMAGE_NT_HEADERS ntHeader = getRVA<IMAGE_NT_HEADERS>(dosHeader->e_lfanew);
 
-		for (int i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
+		for (WORD i = 0; i < ntHeader->FileHeader.NumberOfSections; i++)
 		{
 			auto sec = getSection(ntHeader, i);
 			auto secSize = sec->SizeOfRawData != 0 ? sec->SizeOfRawData : sec->Misc.VirtualSize;
